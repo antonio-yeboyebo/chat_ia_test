@@ -2,6 +2,7 @@ import { useState, useCallback, type KeyboardEvent } from 'react'
 import {
   MessagePrimitive,
   ThreadPrimitive,
+  useMessage,
 } from '@assistant-ui/react'
 import { Bot, SendHorizontal, StopCircle, User, Zap, ZapOff } from 'lucide-react'
 import { A2uiSurface, MarkdownContext } from '@a2ui/react/v0_9'
@@ -58,21 +59,6 @@ export function Chat() {
             components={{ UserMessage, AssistantMessage }}
           />
 
-          {/* Indicador de carga */}
-          <ThreadPrimitive.If running>
-            <div className="flex items-end gap-2 px-1 py-2">
-              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-blue-100">
-                <Bot size={13} className="text-blue-600" />
-              </div>
-              <div className="rounded-2xl rounded-bl-sm border border-gray-200 bg-white px-4 py-2.5 shadow-sm">
-                <span className="inline-flex gap-1">
-                  <span className="animate-blink h-1.5 w-1.5 rounded-full bg-gray-400 [animation-delay:0ms]" />
-                  <span className="animate-blink h-1.5 w-1.5 rounded-full bg-gray-400 [animation-delay:200ms]" />
-                  <span className="animate-blink h-1.5 w-1.5 rounded-full bg-gray-400 [animation-delay:400ms]" />
-                </span>
-              </div>
-            </div>
-          </ThreadPrimitive.If>
         </ThreadPrimitive.Viewport>
       </ThreadPrimitive.Root>
 
@@ -243,12 +229,35 @@ function AssistantMessage() {
         <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-blue-100">
           <Bot size={13} className="text-blue-600" />
         </div>
-        <div className="max-w-[75vw] rounded-2xl rounded-bl-sm border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-800 shadow-sm sm:max-w-md">
-          <MessagePrimitive.Content
-            components={{ Text: ({ text }) => <span className="whitespace-pre-wrap">{text}</span> }}
-          />
-        </div>
+        <AssistantMessageContent />
       </div>
     </MessagePrimitive.Root>
+  )
+}
+
+function AssistantMessageContent() {
+  const showDots = useMessage((m) => {
+    if (m.status?.type !== 'running') return false
+    const text = m.content
+      .filter(p => p.type === 'text')
+      .map(p => (p as { text: string }).text)
+      .join('')
+    return text.length === 0
+  })
+
+  return (
+    <div className="max-w-[75vw] rounded-2xl rounded-bl-sm border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-800 shadow-sm sm:max-w-md">
+      {showDots ? (
+        <span className="inline-flex gap-1">
+          <span className="animate-blink h-1.5 w-1.5 rounded-full bg-gray-400 [animation-delay:0ms]" />
+          <span className="animate-blink h-1.5 w-1.5 rounded-full bg-gray-400 [animation-delay:200ms]" />
+          <span className="animate-blink h-1.5 w-1.5 rounded-full bg-gray-400 [animation-delay:400ms]" />
+        </span>
+      ) : (
+        <MessagePrimitive.Content
+          components={{ Text: ({ text }) => <span className="whitespace-pre-wrap">{text}</span> }}
+        />
+      )}
+    </div>
   )
 }

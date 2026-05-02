@@ -262,7 +262,9 @@ export function IaRuntimeProvider({ children }: { children: ReactNode }) {
     if (!confirmacion) return
 
     const savedConfirmacion = confirmacion
+    const pendingId = newId()
     setConfirmacion(null)
+    setMensajes(prev => [...prev, { id: pendingId, role: 'assistant', content: '' }])
     setIsRunning(true)
     abortRef.current = new AbortController()
 
@@ -276,10 +278,9 @@ export function IaRuntimeProvider({ children }: { children: ReactNode }) {
         abortRef.current.signal,
       )
 
-      setMensajes(prev => [
-        ...prev,
-        { id: newId(), role: 'assistant', content: respuesta.respuesta },
-      ])
+      setMensajes(prev =>
+        prev.map(m => m.id === pendingId ? { ...m, content: respuesta.respuesta } : m),
+      )
       setThreadId(respuesta.thread_id)
 
       if (respuesta.a2ui_messages?.length) {
@@ -292,10 +293,9 @@ export function IaRuntimeProvider({ children }: { children: ReactNode }) {
       }
     } catch (err) {
       if ((err as Error).name === 'AbortError') return
-      setMensajes(prev => [
-        ...prev,
-        { id: newId(), role: 'assistant', content: `Error: ${(err as Error).message}` },
-      ])
+      setMensajes(prev =>
+        prev.map(m => m.id === pendingId ? { ...m, content: `Error: ${(err as Error).message}` } : m),
+      )
     } finally {
       setIsRunning(false)
     }
@@ -322,19 +322,26 @@ export function IaRuntimeProvider({ children }: { children: ReactNode }) {
   // ── Acción a2ui ──────────────────────────────────────────────────────────
 
   const enviarAccion = useCallback(async (accion: A2UIClientAction) => {
+    const pendingId = newId()
+    setMensajes(prev => [...prev, { id: pendingId, role: 'assistant', content: '' }])
+    setIsRunning(true)
     try {
       const respuesta = await enviarAccionA2UI(accion, threadIdRef.current)
       if (respuesta.a2ui_messages?.length) {
         procesarMensajesA2UI(respuesta.a2ui_messages)
       }
       if (respuesta.respuesta) {
-        setMensajes(prev => [
-          ...prev,
-          { id: newId(), role: 'assistant', content: respuesta.respuesta },
-        ])
+        setMensajes(prev =>
+          prev.map(m => m.id === pendingId ? { ...m, content: respuesta.respuesta } : m),
+        )
+      } else {
+        setMensajes(prev => prev.filter(m => m.id !== pendingId))
       }
     } catch (err) {
       console.error('Error al enviar acción a2ui:', err)
+      setMensajes(prev => prev.filter(m => m.id !== pendingId))
+    } finally {
+      setIsRunning(false)
     }
   }, [procesarMensajesA2UI])
 
