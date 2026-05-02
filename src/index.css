@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Scrollbar personalizado para el área de mensajes */
+.messages-viewport::-webkit-scrollbar {
+  width: 6px;
+}
+.messages-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+.messages-viewport::-webkit-scrollbar-thumb {
+  background-color: #e2e8f0;
+  border-radius: 3px;
+}
