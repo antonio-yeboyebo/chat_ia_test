@@ -15,10 +15,9 @@ import { ConfirmacionPedido } from './ConfirmacionPedido'
 // ---------------------------------------------------------------------------
 
 export function Chat() {
-  const { confirmacion, confirmar, isRunning, useStreamingEnabled, setStreamingEnabled, a2uiSurfaces } =
+  const { confirmacion, confirmar, isRunning, useStreamingEnabled, setStreamingEnabled } =
     useIaContext()
 
-  console.log('Renderizando Chat', { confirmacion, isRunning, useStreamingEnabled })
   return (
     <div className="flex h-screen w-full flex-col bg-gray-50">
       {/* Cabecera */}
@@ -62,11 +61,6 @@ export function Chat() {
         </ThreadPrimitive.Viewport>
       </ThreadPrimitive.Root>
 
-      {/* Panel a2ui — superficies interactivas enviadas por el agente */}
-      {a2uiSurfaces.length > 0 && (
-        <PanelA2UI surfaces={a2uiSurfaces} />
-      )}
-
       {/* Panel de confirmación — fuera de ThreadPrimitive.Root para no afectar la altura del viewport */}
       {confirmacion && (
         <div className="flex-none">
@@ -82,22 +76,6 @@ export function Chat() {
       {/* Compositor — textarea nativo, sin dependencia de ComposerPrimitive */}
       {!confirmacion && <Compositor />}
     </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Panel a2ui
-// ---------------------------------------------------------------------------
-
-function PanelA2UI({ surfaces }: { surfaces: ReturnType<typeof useIaContext>['a2uiSurfaces'] }) {
-  return (
-    <MarkdownContext.Provider value={renderMarkdown}>
-      <div className="flex-none border-t border-blue-100 bg-blue-50/40 px-4 py-3 overflow-y-auto max-h-72">
-        {surfaces.map(surface => (
-          <A2uiSurface key={surface.id} surface={surface} />
-        ))}
-      </div>
-    </MarkdownContext.Provider>
   )
 }
 
@@ -224,14 +202,35 @@ function UserMessage() {
 
 function AssistantMessage() {
   return (
-    <MessagePrimitive.Root className="mb-4 flex justify-start px-1">
+    <MessagePrimitive.Root className="mb-4 flex flex-col px-1">
       <div className="flex items-end gap-2">
         <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-blue-100">
           <Bot size={13} className="text-blue-600" />
         </div>
         <AssistantMessageContent />
       </div>
+      <AssistantMessageA2UI />
     </MessagePrimitive.Root>
+  )
+}
+
+function AssistantMessageA2UI() {
+  const messageId = useMessage(m => m.id)
+  const { a2uiSurfaces, messageSurfaceMap } = useIaContext()
+
+  const surfaceIds = messageSurfaceMap[messageId] ?? []
+  const surfaces = a2uiSurfaces.filter(s => surfaceIds.includes(s.id))
+
+  if (surfaces.length === 0) return null
+
+  return (
+    <MarkdownContext.Provider value={renderMarkdown}>
+      <div className="mt-2 ml-9 flex flex-col gap-2">
+        {surfaces.map(surface => (
+          <A2uiSurface key={surface.id} surface={surface} />
+        ))}
+      </div>
+    </MarkdownContext.Provider>
   )
 }
 

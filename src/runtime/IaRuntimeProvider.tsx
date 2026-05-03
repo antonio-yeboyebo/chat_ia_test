@@ -52,6 +52,8 @@ interface IaContextValue {
   setStreamingEnabled: (v: boolean) => void
   /** Superficies a2ui activas en el hilo actual */
   a2uiSurfaces: SurfaceModel<ReactComponentImplementation>[]
+  /** Mapa messageId → surfaceIds para renderizado inline */
+  messageSurfaceMap: Record<string, string[]>
   /** Envía una acción de usuario a2ui al backend */
   enviarAccion: (accion: A2UIClientAction) => Promise<void>
 }
@@ -103,6 +105,8 @@ export function IaRuntimeProvider({ children }: { children: ReactNode }) {
   const [confirmacion, setConfirmacion] = useState<EstadoConfirmacion | null>(null)
   const [streamingEnabled, setStreamingEnabled] = useState(false)
   const [a2uiSurfaces, setA2uiSurfaces] = useState<SurfaceModel<ReactComponentImplementation>[]>([])
+  const [messageSurfaceMap, setMessageSurfaceMap] = useState<Record<string, string[]>>({})
+  const currentMessageIdRef = useRef<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const threadIdRef = useRef<string | null>(null)
 
@@ -125,9 +129,25 @@ export function IaRuntimeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const subCreated = a2uiProcessor.onSurfaceCreated((surface) => {
       setA2uiSurfaces(prev => [...prev, surface])
+      const messageId = currentMessageIdRef.current
+      if (messageId) {
+        setMessageSurfaceMap(prev => ({
+          ...prev,
+          [messageId]: [...(prev[messageId] ?? []), surface.id],
+        }))
+      }
     })
     const subDeleted = a2uiProcessor.onSurfaceDeleted((id) => {
       setA2uiSurfaces(prev => prev.filter(s => s.id !== id))
+      setMessageSurfaceMap(prev => {
+        const next = { ...prev }
+        for (const [msgId, surfaceIds] of Object.entries(next)) {
+          const filtered = surfaceIds.filter(sid => sid !== id)
+          if (filtered.length === 0) delete next[msgId]
+          else next[msgId] = filtered
+        }
+        return next
+      })
     })
     return () => {
       subCreated.unsubscribe()
@@ -145,7 +165,7 @@ export function IaRuntimeProvider({ children }: { children: ReactNode }) {
 
   // ── Procesado de mensajes a2ui (llamado desde la lógica de envío) ────────
 
-  const procesarMensajesA2UI = useCallback((mensajesA2UI: unknown[]) => {
+  const procesarMensajesA2UI = useCallback((mensajesA2UI: unknown[], messageId?: string) => {
     // Antes de pasar los mensajes al processor, inyectar deleteSurface automáticamente
     // para cualquier createSurface cuya superficie ya exista en el modelo.
     // Esto hace la integración robusta frente a backends que no gestionan el ciclo de vida.
@@ -160,7 +180,9 @@ export function IaRuntimeProvider({ children }: { children: ReactNode }) {
       }
       mensajesNormalizados.push(msg)
     }
+    currentMessageIdRef.current = messageId ?? null
     a2uiProcessor.processMessages(mensajesNormalizados as Parameters<typeof a2uiProcessor.processMessages>[0])
+    currentMessageIdRef.current = null
   }, [a2uiProcessor])
 
   // ── Lógica principal de envío ────────────────────────────────────────────
@@ -191,7 +213,7 @@ export function IaRuntimeProvider({ children }: { children: ReactNode }) {
               prev.map(m => m.id === assistantId ? { ...m, content: textoAcumulado } : m),
             )
           } else if (evento.tipo === 'a2ui' && evento.a2ui_message) {
-            procesarMensajesA2UI([evento.a2ui_message])
+            procesarMensajesA2UI([evento.a2ui_message], assistantId)
           } else if (evento.tipo === 'confirmacion' && evento.datos_pedido && evento.thread_id) {
             setThreadId(evento.thread_id)
             setConfirmacion({ threadId: evento.thread_id, datosPedido: evento.datos_pedido })
@@ -213,15 +235,16 @@ export function IaRuntimeProvider({ children }: { children: ReactNode }) {
           { pregunta: texto, thread_id: threadId },
           abortRef.current.signal,
         )
+        const assistantId = newId()
         setMensajes(prev => [
           ...prev,
-          { id: newId(), role: 'assistant', content: respuesta.respuesta },
+          { id: assistantId, role: 'assistant', content: respuesta.respuesta },
         ])
         setThreadId(respuesta.thread_id)
 
         // Procesar mensajes a2ui de la respuesta REST
         if (respuesta.a2ui_messages?.length) {
-          procesarMensajesA2UI(respuesta.a2ui_messages)
+          procesarMensajesA2UI(respuesta.a2ui_messages, assistantId)
         }
 
         if (respuesta.esperando_confirmacion && respuesta.datos_pedido) {
@@ -284,7 +307,7 @@ export function IaRuntimeProvider({ children }: { children: ReactNode }) {
       setThreadId(respuesta.thread_id)
 
       if (respuesta.a2ui_messages?.length) {
-        procesarMensajesA2UI(respuesta.a2ui_messages)
+        procesarMensajesA2UI(respuesta.a2ui_messages, pendingId)
       }
 
       // Soporte para confirmaciones encadenadas (raro pero posible)
@@ -328,7 +351,7 @@ export function IaRuntimeProvider({ children }: { children: ReactNode }) {
     try {
       const respuesta = await enviarAccionA2UI(accion, threadIdRef.current)
       if (respuesta.a2ui_messages?.length) {
-        procesarMensajesA2UI(respuesta.a2ui_messages)
+        procesarMensajesA2UI(respuesta.a2ui_messages, pendingId)
       }
       if (respuesta.respuesta) {
         setMensajes(prev =>
@@ -371,6 +394,7 @@ export function IaRuntimeProvider({ children }: { children: ReactNode }) {
       useStreamingEnabled: streamingEnabled,
       setStreamingEnabled,
       a2uiSurfaces,
+      messageSurfaceMap,
       enviarAccion,
     }}>
       <AssistantRuntimeProvider runtime={runtime}>
